@@ -8,8 +8,8 @@
 
 typedef struct{
 	std::unordered_set<int> items;
-    float r;
-    float cosine_of_theta;
+    	float r;
+    	float cosine_of_theta;
 }itemset;
 
 typedef struct{
