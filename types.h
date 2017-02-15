@@ -8,18 +8,19 @@
 
 typedef struct{
 	std::unordered_set<int> items;
-    	float r;
-    	float cosine_of_theta;
+    double r;
+    double cosine_of_theta;
 }itemset;
 
 typedef struct{
-	std::unordered_map<string,itemset> itemsets;
-	std::unordered_map<string,int> counts;
+	std::unordered_map<std::string,itemset> itemsets;
+	std::unordered_map<std::string,int> counts;
 	int k;
 }lk;
 
 typedef struct{
 	std::vector<lk> lks;
 }lkArray;
+
 
 #endif
