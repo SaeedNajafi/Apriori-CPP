@@ -417,7 +417,7 @@ void increment(vector<int> &v, lk &c){
 	}
     return;}
 
-// find subsets of one transaction (transaction is stored in set) with size "size" and increment their counters in candidates itemsets "c" if exists.
+// find subsets of one transaction (transaction is stored in set) with size "size" and increment their counters in candidate itemsets "c" if exist.
 void subset(unordered_set<int> &set, int size, int left_size, unordered_set<int>::iterator index, vector<int> &v, lk &c){
     if(left_size==0){
         increment(v,c);
