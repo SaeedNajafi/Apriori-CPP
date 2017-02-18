@@ -5,12 +5,16 @@
 #include <sstream>
 #include <math.h>
 #include <time.h>
+#include <algorithm>
 
 #include "types.h"
 
 
 using namespace std;
 
+
+
+#define cut_off_to_not_save_all_transactions_in_ram 30000
 
 int numItems=0;
 int numTransactions=0;
@@ -20,23 +24,30 @@ int minSupp;
 double minSupport;
 double minConfidence;
 
+
+
+/*	
+	We check size of transactions that we currently have in an unordered_set, if this size is large enough,
+	then this set of transactions is deleted, otherwise all transactions are saved internally to speed up next steps.
+*/
+bool can_store_in_ram=true;
+
 clock_t t1,t2;
 
 string fileName;
 string programName;
 string displayOption="?";
 
-lkArray l;
-
+vector<lk> all_ls;
 vector<unordered_set<int>> transactions;
 
 void initialize();
-void generate_candidates(lk* new_c, lk* previous_l);
+void generate_candidates(lk &new_c, lk &previous_l);
 int combinations(int d, int k);
-string generate_key(itemset * ptr);
-void increment(vector<int>* v,lk* c);
-void subset(unordered_set<int>* set, int size, int left_size, unordered_set<int>::iterator index, vector<int> * v,lk* c);
-void keep_frequent_candidates(lk* c);
+string generate_key(vector<int> &ptr);
+void increment(vector<int> &v,lk &c);
+void subset(unordered_set<int> &set, int size, int left_size, unordered_set<int>::iterator index, vector<int> &v,lk &c);
+void keep_frequent_candidates(lk &c);
 
 
 
@@ -63,145 +74,131 @@ int main(int argc, char **argv){
 
     
     lk c;
-    lk previous_l=l.lks[0];
+    lk previous_l=all_ls[0];
     while(previous_l.itemsets.size()!=0){
-    	generate_candidates(&c,&previous_l);
-    	keep_frequent_candidates(&c);
-    	c.counts.clear();
+    	generate_candidates(c,previous_l);
+    	keep_frequent_candidates(c);
     	c.itemsets.clear();
-    	previous_l=l.lks.back();
+    	previous_l=all_ls.back();
     }
 
-	l.lks.pop_back();
+	all_ls.pop_back();
     t2=clock();
     double diff=((double)t2-(double)t1);
     double seconds = diff / CLOCKS_PER_SEC;
     cout<<seconds<<endl;
-    cout<<l.lks.size()<<endl;
+    cout<<all_ls.size()<<endl;
 
     ofstream myfile;
     string hash;
     int count;
     itemset temp;
     lk l_temp;
-	for(int i=0;i<l.lks.size();i++){
-  		myfile.open ("output_"+to_string(i)+".txt");
-    	l_temp=l.lks[i];
-    	for (auto it = l_temp.counts.begin(); it != l_temp.counts.end(); ++it ){
+    vector<int> v_temp;
+	for(int i=0;i<all_ls.size();i++){
+  		myfile.open("output_"+to_string(i)+".txt");
+    	l_temp=all_ls[i];
+    	for (auto it = l_temp.itemsets.begin(); it != l_temp.itemsets.end(); ++it ){
         	hash=it->first;
-        	count=it->second;
-        	temp=l_temp.itemsets[hash];
-        	myfile<<count<<endl;
-        	myfile<<hash<<endl;
-        	myfile<<"#"<<endl;
-        	for (auto itt = temp.items.begin(); itt != temp.items.end(); ++itt ){
-        		myfile<<*itt<<endl;
+        	temp=it->second;
+
+        	v_temp.clear();
+        	for (auto itt = temp.items.begin(); itt != temp.items.end(); ++itt){
+        		v_temp.push_back(*itt);
         	}
-        	myfile<<"--------------------"<<endl;  
+        	sort(v_temp.begin(),v_temp.end());
+        	for (auto itt = v_temp.begin(); itt != v_temp.end(); ++itt){
+        		myfile<<*itt;
+        		myfile<<",";
+        	}
+        	myfile<<endl;	
     	}
-    	myfile<<l_temp.itemsets.size()<<endl;
-    	myfile<<l_temp.counts.size()<<endl;
   		myfile.close();
   	}
 
   	
-    /*
-    lk l5=l.lks[4];
-	string hash;
-    int count;
-    itemset temp;
-    for (auto it = l5.counts.begin(); it != l5.counts.end(); ++it ){
-        hash=it->first;
-        count=it->second;
-        temp=l5.itemsets[hash];
-        cout<< count<<endl;
-        cout<< hash<<endl;
-        cout<<"#"<<endl;
-        for (auto itt = temp.items.begin(); itt != temp.items.end(); ++itt ){
-        	cout<<*itt<<endl;
-        }
-        cout<<"--------------------"<<endl;  
-    }
-    cout<<l5.itemsets.size()<<endl;
-    cout<<l5.counts.size()<<endl;
-	*/
-	/*
-	lk c1;
-	lk l2=l.lks[1];
-	generate_candidates(&c1,&l2);
-	keep_frequent_candidates(&c1);
-	*/
-	/*
-	lk c3;
-	lk l3=l.lks[2];
-	generate_candidates(&c3,&l3);
-	keep_frequent_candidates(&c3);
-	*/
-
-    /*
-    cout << numItems <<endl;
-    cout << numTransactions <<endl;
-    cout << minSupp <<endl;
-    cout << maxItemsetSize <<endl;
-    cout << minConfidence <<endl;
-    cout << fileName <<endl;
-    cout << programName <<endl;
-    cout << displayOption <<endl;
-    cout << minSupport <<endl;
-    cout << transactions.size() <<endl;
-    */
-
     return 0;
 }
 
+
+
+/*
+	Read the transaction file once and find the total number of transactions (numTransactions),
+	maximum number of items in one transaction (maxItemsetSize),
+	check whether we can store all transactions in RAM or not (can_store_in_ram),
+	create candidate items of size 1 and count their occurrences in different transactions,
+	Finally, create frequent itemsets of size 1 which their counter are not less than minSupp (minmum number of transactions for a frequent itemset).
+*/
 void initialize(){
 
     ifstream infile(fileName);
     string line;
-    lk c;
-    c.k=1;
 
     int n;
     int m;
 
     double r;
-    double theta;
-    string key;
-    
-    
-    
+    double cosine_of_theta;
+    string hash;
+
+    // Create candidates of size 1 and fill it while reading the transaction file.
+    lk c;
+    c.k=1;
+
     while (getline(infile,line)){
         istringstream iss(line);
+
+        
         unordered_set<int> transaction;
+    	
 
         m=0;
         while( iss >> n ){
+
+        	// m captures the number of items in one transaction (one line of file).
             m +=1;
-            transaction.insert(n);
+
+            if(can_store_in_ram){
+            	transaction.insert(n);
+        	}
+
+        	// "r" and "cosine_of_theta" for a set with a single integer n is: r = n, cosine_of_theta = 1.0
             r=(double)(n);
-            theta=(double)(1.0);
-            key=to_string(r) + to_string(theta);
-            if(c.counts.count(key)>0){
-                c.counts[key] +=1;
+            cosine_of_theta=(double)(1.0);
+            hash=to_string(r) + to_string(cosine_of_theta);
+
+            if(c.itemsets.count(hash)>0){
+                c.itemsets[hash].counter +=1;
             }
             else{
+
                 itemset newItemset;
                 newItemset.items.insert(n);
                 newItemset.r=r;
-                newItemset.cosine_of_theta=theta;
-                c.itemsets.insert(pair<string,itemset>(key,newItemset));
-                c.counts.insert(pair<string,int>(key,1));
+                newItemset.cosine_of_theta=cosine_of_theta;
+                newItemset.counter=1;
+                c.itemsets.insert(pair<string,itemset>(hash,newItemset));
                 numItems +=1;
+
             }
         }
 
-
+        // find maximum number of items in one transaction.
         if (m > maxItemsetSize){
             maxItemsetSize=m;
         }
 
         numTransactions +=1;
-        transactions.push_back(transaction);
+
+        if(can_store_in_ram){
+        	transactions.push_back(transaction);
+    	}
+
+        if((can_store_in_ram) && (numTransactions > cut_off_to_not_save_all_transactions_in_ram)){
+        	can_store_in_ram=false;
+        	transactions.clear();
+        }
+
     }
 
     minSupp=round(minSupport * numTransactions);
@@ -209,29 +206,35 @@ void initialize(){
     lk l1;
     l1.k=1;
 
-    string hash;
+    
+    // Copy frequent items into l1.
     int count;
-    itemset temp;
-    for (auto it = c.counts.begin(); it != c.counts.end(); ++it ){
+    itemset temp_itemset;
+    for (auto it = c.itemsets.begin(); it != c.itemsets.end(); ++it){
         hash=it->first;
-        count=it->second;
-        if (count >= minSupp){
-            l1.counts.insert(pair<string,int>(hash,count));
-            temp=c.itemsets[hash];
-            l1.itemsets.insert(pair<string,itemset>(hash,temp));   
+        temp_itemset=it->second;
+        if (temp_itemset.counter >= minSupp){
+            l1.itemsets.insert(pair<string,itemset>(hash,temp_itemset));   
         }
     }
 
-    c.counts.clear();
     c.itemsets.clear();
-    l.lks.push_back(l1);
+
+    all_ls.push_back(l1);
+
     infile.close();
+
     return;}
 
-void generate_candidates(lk* new_c, lk* previous_l){
 
-	int k = previous_l->k;
-    new_c->k = k + 1;
+
+/*
+    This function generates new candidates of size k + 1 from previous frequent itemsets of size k.
+*/
+void generate_candidates(lk &new_c, lk &previous_l){
+
+	int k = previous_l.k;
+    new_c.k = k + 1;
     int newk= k + 1;
 
     string hash_to_check;
@@ -250,15 +253,13 @@ void generate_candidates(lk* new_c, lk* previous_l){
     double temp_r;
     double temp_theta;
 
-    unordered_set<string> checked_hashes;
-
-    if(previous_l->itemsets.size() < l.lks[0].itemsets.size()){
+    if(previous_l.itemsets.size() < all_ls[0].itemsets.size()){
 	    
-	    for (auto it_i= previous_l->itemsets.begin(); it_i != previous_l->itemsets.end(); ++it_i){
+	    for (auto it_i= previous_l.itemsets.begin(); it_i != previous_l.itemsets.end(); ++it_i){
 	        
 	        temp_i = it_i->second;
 
-	        for (auto it_j=it_i; it_j!= previous_l->itemsets.end(); ++it_j){
+	        for (auto it_j=it_i; it_j!= previous_l.itemsets.end(); ++it_j){
 	            temp_j=it_j->second;
 	            num=0;
 	            
@@ -270,72 +271,81 @@ void generate_candidates(lk* new_c, lk* previous_l){
 	                }
 	            }
 	            
+                // num is the number of different items between temp_i and temp_j.
 	            if(num==1){
 
 	            	new_r = sqrt((temp_i.r * temp_i.r) + (item * item));
 	            	new_theta = ((temp_i.cosine_of_theta * sqrt(k) * temp_i.r) + item) / (sqrt(newk) * new_r);
 	                new_hash = to_string(new_r) + to_string(new_theta);
-	                if(checked_hashes.count(new_hash)==0){
+	                
+                    if(new_c.itemsets.count(new_hash)==0){
+
 	                    to_generate =true;
 	                    for (auto it=temp_i.items.begin(); it!= temp_i.items.end(); ++it){
+
 	                    	temp_r = sqrt((temp_i.r * temp_i.r) - ((*it) * (*it)) + (item * item));
 	                    	temp_theta = ((temp_i.cosine_of_theta * sqrt(k) * temp_i.r) - (*it) + item) / (sqrt(k) * temp_r);
 	                        hash_to_check = to_string(temp_r) + to_string(temp_theta);
-	                        if(previous_l->itemsets.count(hash_to_check)==0){
+	                       	
+	                        if(previous_l.itemsets.count(hash_to_check)==0){
 	                            to_generate=false;
 	                            break;
 	                        }
 	                    }
+
+                        // If all subsets of the new itemset is in previous_l, then add that new itemset to new_c.
 	                    if(to_generate){
 	                        itemset newItemset;
 	                        newItemset.items.insert(temp_i.items.begin(),temp_i.items.end());
 	                        newItemset.items.insert(item);
 	                        newItemset.r = new_r;
 	                        newItemset.cosine_of_theta= new_theta;
-	                        new_c->itemsets.insert(pair<string,itemset>(new_hash,newItemset));
-	                        new_c->counts.insert(pair<string,int>(new_hash,0));
+                            newItemset.counter=0;
+	                        new_c.itemsets.insert(pair<string,itemset>(new_hash,newItemset));
 	                    }
-	                    checked_hashes.insert(new_hash);
 	                }
 	            }
 	        }   
 	    }
 	}
 
+    // This is an alternative to the previous algorithm where the number of itemsets in previous_l is greater than number of frequent items.
+    // This algorithm can be faster.
 	else{
 		
-		itemset temp;
-		int temp_item;
-		unordered_set<int> items_to_check;
-		for (auto it = previous_l->itemsets.begin(); it!= previous_l->itemsets.end(); ++it){
-	    
-	    	temp = it->second;
 
+        // Find all items in previous_l;
+		itemset temp;
+		unordered_set<int> items_to_check;
+		for (auto it = previous_l.itemsets.begin(); it!= previous_l.itemsets.end(); ++it){
+	    	temp = it->second;
 	        for (auto itt=temp.items.begin(); itt!= temp.items.end(); ++itt){
-	            temp_item=*itt;
-	            if(items_to_check.count(temp_item)==0){
-	            	items_to_check.insert(temp_item);
-	            }
+	            	items_to_check.insert(*itt);
 	        }
 	    }
 
-	    for (auto it_i = previous_l->itemsets.begin(); it_i != previous_l->itemsets.end(); ++it_i){
+	    for (auto it_i = previous_l.itemsets.begin(); it_i != previous_l.itemsets.end(); ++it_i){
 	        
 	        temp_i = it_i->second;
 
 	        for (auto it_j=items_to_check.begin(); it_j!=items_to_check.end(); ++it_j){
 	            item=*it_j;
+
 	            if(temp_i.items.count(item)==0){
+
 		            new_r = sqrt((temp_i.r * temp_i.r) + (item * item));
 	            	new_theta = ((temp_i.cosine_of_theta * sqrt(k) * temp_i.r) + item) / (sqrt(newk) * new_r);
 	                new_hash = to_string(new_r) + to_string(new_theta);
-		            if(checked_hashes.count(new_hash)==0){
+
+                    if(new_c.itemsets.count(new_hash)==0){
 		                to_generate=true;
 		                for (auto it=temp_i.items.begin(); it!= temp_i.items.end(); ++it){
+
 		                	temp_r = sqrt((temp_i.r * temp_i.r) - ((*it) * (*it)) + (item * item));
 	                    	temp_theta = ((temp_i.cosine_of_theta * sqrt(k) * temp_i.r) - (*it) + item) / (sqrt(k) * temp_r);
 	                        hash_to_check = to_string(temp_r) + to_string(temp_theta);
-		                    if(previous_l->itemsets.count(hash_to_check)==0){
+	                        
+		                    if(previous_l.itemsets.count(hash_to_check)==0){
 		                        to_generate=false;
 		                        break;
 		                    }
@@ -346,31 +356,48 @@ void generate_candidates(lk* new_c, lk* previous_l){
 		                    newItemset.items.insert(item);
 		                    newItemset.r = new_r;
 		                    newItemset.cosine_of_theta=new_theta;
-		                    new_c->itemsets.insert(pair<string,itemset>(new_hash,newItemset));
-		                    new_c->counts.insert(pair<string,int>(new_hash,0));
+                            newItemset.counter=0;
+		                    new_c.itemsets.insert(pair<string,itemset>(new_hash,newItemset));
 		                }
-		                checked_hashes.insert(new_hash);
 		          	}
 		        }
 	       }
 	 	}   
 	}
+    
 	return;}
 
+
+
+/*
+	Calculate combinations of k items from a set of d items. (k is less than d)
+	This function is used to check which algorithm should be used for counting transactions for each itemset
+	in the function "keep_frequent_candidates". 
+*/
 int combinations(int d, int k){
+
 	if(k==1){
 		return d;
 	}
 	if(k==d){
 		return 1;
 	}
+
+	if(k > d){
+		return 0;
+	}
 	return combinations(d-1,k) + combinations(d-1,k-1);}
 
-string generate_key(vector<int> * ptr){
-	int k=ptr->size();
+
+/*
+	Function to generate a hash key for a vector of integers.
+	"ptr" the vector of integers passed by reference to this function.
+*/
+string generate_key(vector<int> &ptr){
+	int k=ptr.size();
     double r=0.0;
     int sum=0;
-    for (auto it=ptr->begin(); it!= ptr->end(); ++it){
+    for (auto it=ptr.begin(); it!= ptr.end(); ++it){
         r += (*it) * (*it);
         sum += *it;
     }
@@ -379,72 +406,84 @@ string generate_key(vector<int> * ptr){
     string key =to_string(r) + to_string(cosine_of_theta);
     return key;}
 
-void increment(vector<int>* v, lk* c){
-    string key=generate_key(v);
-    if(c->counts.count(key)>0){
-    	c->counts[key] +=1;
-	}
-    return;   }
+void increment(vector<int> &v, lk &c){
 
-void subset(unordered_set<int>* set, int size, int left_size, unordered_set<int>::iterator index, vector<int> * v, lk* c){
+    string hash=generate_key(v);
+
+    if(c.itemsets.count(hash)>0){
+
+    	c.itemsets[hash].counter +=1;
+
+	}
+    return;}
+
+// find subsets of one transaction (transaction is stored in set) with size "size" and increment their counters in candidates itemsets "c" if exists.
+void subset(unordered_set<int> &set, int size, int left_size, unordered_set<int>::iterator index, vector<int> &v, lk &c){
     if(left_size==0){
         increment(v,c);
         return;
     }
-    for(unordered_set<int>::iterator it=index; it!=set->end(); ++it){
-        v->push_back(*it);
+    for(unordered_set<int>::iterator it=index; it!=set.end(); ++it){
+        v.push_back(*it);
         subset(set,size,left_size-1,++index,v,c);
-        v->pop_back();
+        v.pop_back();
     }
-    return;}
+    return; }
 
-void keep_frequent_candidates(lk* c){
-	int i;
-	string key;
+void keep_frequent_candidates(lk &c){
+	
+	string hash;
     itemset temp;
     bool to_count;
     unordered_set<int> temp_set;
+    
 
-	for (i=0; i<transactions.size();i++){
-		temp_set=transactions[i];
-		if(temp_set.size() >= c->k){
-			if(c->itemsets.size() < combinations(temp_set.size(),c->k)){
-		    	for (auto it = c->itemsets.begin(); it!= c->itemsets.end(); ++it){
-		        	key=it->first;
-		        	temp=it->second;
-		        	to_count=true;
-		        	for (auto itt = temp.items.begin(); itt != temp.items.end(); ++itt){
-		        		if(temp_set.count(*itt)==0){
-		        			to_count=false;
-		        			break;
-		        		}
-		        	}
-		        	if(to_count){
-		        		c->counts[key] +=1;
-		        	}
-				}
-			}
-			else{
-				vector<int> temp_vector;
-				subset(&temp_set,temp_set.size(),c->k,temp_set.begin(),&temp_vector,c);
-			}
-		}
-	}
+    if(can_store_in_ram){
+
+    	for (int i=0; i<transactions.size(); i++){
+    		temp_set=transactions[i];
+
+    		if(temp_set.size() >= c.k){
+    			if(c.itemsets.size() < combinations(temp_set.size(),c.k)){
+    		    	for (auto it = c.itemsets.begin(); it!= c.itemsets.end(); ++it){
+    		        	hash=it->first;
+    		        	temp=it->second;
+    		        	to_count=true;
+    		        	for (auto itt = temp.items.begin(); itt != temp.items.end(); ++itt){
+    		        		if(temp_set.count(*itt)==0){
+    		        			to_count=false;
+    		        			break;
+    		        		}
+    		        	}
+    		        	if(to_count){
+    		        		c.itemsets[hash].counter +=1;
+    		        	}
+    				}
+    			}
+    			else{
+                    vector<int> temp_vector;
+    				subset(temp_set,temp_set.size(),c.k,temp_set.begin(),temp_vector,c);
+    			}
+    		}
+    	}  
+    }
 
 	lk l_new;
-    l_new.k = c->k;
+    l_new.k = c.k;
 
-    
+    // Copy frequent items into l_new.
     int count;
-    for (auto it = c->counts.begin(); it != c->counts.end(); ++it){
-        key=it->first;
-        count=it->second;
-        if (count >= minSupp){
-            l_new.counts.insert(pair<string,int>(key,count));
-            temp=c->itemsets[key];
-            l_new.itemsets.insert(pair<string,itemset>(key,temp));   
+    itemset temp_itemset;
+    for (auto it = c.itemsets.begin(); it != c.itemsets.end(); ++it){
+        hash=it->first;
+        temp_itemset=it->second;
+        if (temp_itemset.counter >= minSupp){
+            l_new.itemsets.insert(pair<string,itemset>(hash,temp_itemset));   
         }
     }
 
-    l.lks.push_back(l_new);
+    c.itemsets.clear();
+
+    all_ls.push_back(l_new);
+
     return;}
