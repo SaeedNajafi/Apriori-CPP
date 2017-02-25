@@ -4,7 +4,7 @@ Implementation of Apriori algorithm in C++
 
 **Time and Count measures**
 
-Experiments were done on my laptop with the following specifications.
+Experiments were done on my laptop with the following specifications:
 
 •	Processor: 2.7 GHz Intel Core i5, only one core was used.
 
@@ -13,6 +13,7 @@ Experiments were done on my laptop with the following specifications.
 •	Hard Disk: 128 Giga Byte SSD Disk.
 
 •	Operating System: macOS Sierra
+
 
 
 **First Experiment:**
@@ -35,6 +36,7 @@ Number of association rules: 0
 
 
 Execution time: 0 seconds
+
 
 
 **Second Experiment:**
@@ -60,6 +62,7 @@ Number of association rules: 0
 
 
 Execution time: 1 seconds
+
 
 
 ***Third Experiment:***
