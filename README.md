@@ -1,9 +1,6 @@
 # Apriori-CPP
 Implementation of Apriori algorithm in C++ 
 
-**CMPUT 690 – Assignment 2**
-
-**Saeed Najafi 1509106 – Winter 2017 – University of Alberta**
 
 **Time and Count measures**
 
