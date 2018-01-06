@@ -14,58 +14,7 @@ Experiments were done on my laptop with the following specifications:
 
 •	Operating System: macOS Sierra
 
-
-
-**First Experiment:**
-
-Number of Transactions: 100 (first 100 transactions were selected)
-
-Minimum Support: 10 (10% - 0.1)
-
-Minimum Confidence: 80% (0.8)
-
-Compile: g++ -std=c++11 main.cpp -o main
-
-Run: ./main test1.txt 0.1 0.8 a
-
-***Results:***
-
-Number of frequent 1_itemsets: 10
-
-Number of association rules: 0
-
-
-Execution time: 0 seconds
-
-
-
-**Second Experiment:**
-
-Number of Transactions: 1000 (first 1000 transactions were selected)
-
-Minimum Support: 10 (1% - 0.01)
-
-Minimum Confidence: 80% (0.8)
-
-Compile: g++ -std=c++11 main.cpp -o main
-
-Run: ./main test2.txt 0.01 0.8 a
-
-
-***Results:***
-
-Number of frequent 1_itemsets: 334
-
-Number of frequent 2_itemsets: 174
-
-Number of association rules: 0
-
-
-Execution time: 1 seconds
-
-
-
-***Third Experiment:***
+***Experiment:***
 
 Number of Transactions: 10000
 
